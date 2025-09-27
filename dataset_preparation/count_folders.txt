@@ -1,0 +1,11 @@
+D:\mimic-cxr-jpg\mimic-cxr-jpg\2.1.0\files\p10 아래에 's'로 시작하는 폴더 개수: 22197
+D:\mimic-cxr-jpg\mimic-cxr-jpg\2.1.0\files\p11 아래에 's'로 시작하는 폴더 개수: 23343
+D:\mimic-cxr-jpg\mimic-cxr-jpg\2.1.0\files\p12 아래에 's'로 시작하는 폴더 개수: 22412
+D:\mimic-cxr-jpg\mimic-cxr-jpg\2.1.0\files\p13 아래에 's'로 시작하는 폴더 개수: 22931
+D:\mimic-cxr-jpg\mimic-cxr-jpg\2.1.0\files\p14 아래에 's'로 시작하는 폴더 개수: 22572
+D:\mimic-cxr-jpg\mimic-cxr-jpg\2.1.0\files\p15 아래에 's'로 시작하는 폴더 개수: 23699
+D:\mimic-cxr-jpg\mimic-cxr-jpg\2.1.0\files\p16 아래에 's'로 시작하는 폴더 개수: 22135
+D:\mimic-cxr-jpg\mimic-cxr-jpg\2.1.0\files\p17 아래에 's'로 시작하는 폴더 개수: 10543
+
+=> 총 169,832개
+=> Client 20명 기준 : 각 8400장 -> 테스트 데이터는 1832장

@@ -1,0 +1,49 @@
+# ========= Python 캐시/가상환경 =========
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+.env
+
+# ========= 편집기 설정 =========
+.vscode/
+
+# ========= 러닝 아티팩트(출력물/체크포인트) =========
+runs/
+logs/
+outputs/
+local_outputs/
+checkpoints/
+
+# ========= 모델/대용량 바이너리 =========
+*.pt
+*.pth
+*.ckpt
+*.bin
+*.onnx
+
+# ========= 대규모 원시 데이터(예: 이미지/압축) =========
+# 필요하면 경로 제한해서 쓰자 (예: data/ 아래만)
+data/**
+datasets/**
+*.zip
+*.tar
+*.gz
+
+# ========= 이미지(선택) =========
+# 데이터셋 이미지를 전부 올릴 거 아니라면, data/ 아래만 차단 권장
+# data/**/*.jpg
+# data/**/*.jpeg
+# data/**/*.png
+
+# ========= CSV 관련 (선택적) =========
+# 전역 *.csv 는 보통 막지 않음(코드/설정 CSV는 커밋해야 해서)
+# 만약 data/ 안 CSV만 제외하려면 이렇게:
+# data/**/*.csv
+
+# ========= OS 잡파일 =========
+.DS_Store
+Thumbs.db
+
+# Local Model Weight
+best.pt
