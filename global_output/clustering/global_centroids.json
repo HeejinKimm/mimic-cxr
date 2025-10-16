@@ -1,0 +1,16 @@
+{
+  "img": {
+    "file": "global_img_centroids.npy",
+    "shape": [
+      4,
+      256
+    ]
+  },
+  "txt": {
+    "file": "global_txt_centroids.npy",
+    "shape": [
+      4,
+      256
+    ]
+  }
+}

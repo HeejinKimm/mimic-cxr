@@ -1,0 +1,29 @@
+{
+  "tau": 0.07,
+  "mapping": [
+    {
+      "img_group": 0,
+      "mapped_txt_group": 3,
+      "sim_i2t": 0.09823776036500931,
+      "sim_sym": 0.07351507991552353
+    },
+    {
+      "img_group": 1,
+      "mapped_txt_group": 3,
+      "sim_i2t": 0.08597151935100555,
+      "sim_sym": 0.06638733297586441
+    },
+    {
+      "img_group": 2,
+      "mapped_txt_group": 3,
+      "sim_i2t": 0.09693009406328201,
+      "sim_sym": 0.07853800803422928
+    },
+    {
+      "img_group": 3,
+      "mapped_txt_group": 3,
+      "sim_i2t": 0.08842337131500244,
+      "sim_sym": 0.06851609796285629
+    }
+  ]
+}

@@ -1,0 +1,95 @@
+{
+  "k_groups": 4,
+  "groups": [
+    {
+      "group_id": 0,
+      "n_clients": 4,
+      "members": [
+        3,
+        8,
+        13,
+        14
+      ],
+      "n_samples": 33600,
+      "subset_centroids_file": "txt_clientgroup_0_centroids.npy",
+      "subset_centroids_shape": [
+        4,
+        256
+      ],
+      "context_centroids_file": "global_img_centroids.npy",
+      "context_centroids_shape": [
+        4,
+        256
+      ],
+      "z_file": "txt_clientgroup_0_Z.npz"
+    },
+    {
+      "group_id": 1,
+      "n_clients": 4,
+      "members": [
+        4,
+        6,
+        11,
+        15
+      ],
+      "n_samples": 33600,
+      "subset_centroids_file": "txt_clientgroup_1_centroids.npy",
+      "subset_centroids_shape": [
+        4,
+        256
+      ],
+      "context_centroids_file": "global_img_centroids.npy",
+      "context_centroids_shape": [
+        4,
+        256
+      ],
+      "z_file": "txt_clientgroup_1_Z.npz"
+    },
+    {
+      "group_id": 2,
+      "n_clients": 5,
+      "members": [
+        1,
+        2,
+        5,
+        19,
+        20
+      ],
+      "n_samples": 42000,
+      "subset_centroids_file": "txt_clientgroup_2_centroids.npy",
+      "subset_centroids_shape": [
+        4,
+        256
+      ],
+      "context_centroids_file": "global_img_centroids.npy",
+      "context_centroids_shape": [
+        4,
+        256
+      ],
+      "z_file": "txt_clientgroup_2_Z.npz"
+    },
+    {
+      "group_id": 3,
+      "n_clients": 5,
+      "members": [
+        7,
+        9,
+        10,
+        12,
+        16
+      ],
+      "n_samples": 42000,
+      "subset_centroids_file": "txt_clientgroup_3_centroids.npy",
+      "subset_centroids_shape": [
+        4,
+        256
+      ],
+      "context_centroids_file": "global_img_centroids.npy",
+      "context_centroids_shape": [
+        4,
+        256
+      ],
+      "z_file": "txt_clientgroup_3_Z.npz"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "tau": 0.07,
+  "score_type": "sym",
+  "total_score": 0.282831646502018,
+  "mapping": [
+    {
+      "img_group": 0,
+      "mapped_txt_group": 0,
+      "sim_i2t": 0.09558609873056412,
+      "sim_sym": 0.07235212624073029
+    },
+    {
+      "img_group": 1,
+      "mapped_txt_group": 1,
+      "sim_i2t": 0.06301054358482361,
+      "sim_sym": 0.05213496834039688
+    },
+    {
+      "img_group": 2,
+      "mapped_txt_group": 2,
+      "sim_i2t": 0.09656419605016708,
+      "sim_sym": 0.08982845395803452
+    },
+    {
+      "img_group": 3,
+      "mapped_txt_group": 3,
+      "sim_i2t": 0.08842337131500244,
+      "sim_sym": 0.06851609796285629
+    }
+  ]
+}

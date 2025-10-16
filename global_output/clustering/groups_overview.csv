@@ -1,0 +1,9 @@
+unit,group_id,n_clients,z_file
+img_clientgroup,0,4,img_clientgroup_0_Z.npz
+img_clientgroup,1,4,img_clientgroup_1_Z.npz
+img_clientgroup,2,5,img_clientgroup_2_Z.npz
+img_clientgroup,3,5,img_clientgroup_3_Z.npz
+txt_clientgroup,0,4,txt_clientgroup_0_Z.npz
+txt_clientgroup,1,4,txt_clientgroup_1_Z.npz
+txt_clientgroup,2,5,txt_clientgroup_2_Z.npz
+txt_clientgroup,3,5,txt_clientgroup_3_Z.npz
