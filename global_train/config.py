@@ -5,9 +5,9 @@ from typing import List, Tuple
 class Config:
      # ------- 경로 -------
     # 각 client_XX 폴더가 있는 루트(= train_local이 저장하는 곳)
-    BASE_DIR: str = r".\outputs"
+    BASE_DIR: str = r"C:\HJHJ0808\김희진\연구\졸업프로젝트\mimic-cxr\mimic-cxr\local_train_outputs"
     # 글로벌 산출물(Z, 페이로드, 리포트 등)
-    OUT_GLOBAL_DIR: str = r".\outputs"
+    OUT_GLOBAL_DIR: str = r"C:\HJHJ0808\김희진\연구\졸업프로젝트\mimic-cxr\mimic-cxr\global_output"
 
     # ------- 클라이언트 그룹 -------
     # 1~16 멀티모달, 17~18 이미지 온리, 19~20 텍스트 온리

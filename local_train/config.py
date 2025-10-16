@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-BASE = Path(__file__).resolve().parent  # mimic-cxr/mimic-cxr
+BASE = Path(__file__).resolve().parents[1]  # ★ local_train 상위(mimic-cxr/mimic-cxr)
 
 @dataclass
 class Cfg:

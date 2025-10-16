@@ -1,5 +1,6 @@
 # local_gating/train_local_kd.py
 # -*- coding: utf-8 -*-
+# python -m local_gating.train_local_kd --cid 1 --epochs 5 --batch 128
 import os
 import json
 import argparse
@@ -9,43 +10,158 @@ from torch.optim import AdamW
 
 # ---- 우리 프로젝트 내부 모듈 ----
 from global_train.config import cfg
-from global_train.prep_clients import build_dataloaders   # 로더 재사용
 ## from ..local import utils_fusion as uf                # 백본 인코더
-from local import train_local as tl
+from local_train.data import ClientDataset, build_image_picker_from_metadata, load_label_table, img_transform
+from local_train.config import Cfg as LocalCfg
+from local_train.models import MultiModalLateFusion as LocalFusion
 
 
 from .kd_utils import compute_pos_weight, kd_repr_loss
 from .model_head import LocalClassifierWithAugment
 
+# train_local_kd.py 맨 위 근처에 임시로 추가해서 써보기
+import time, torch
+
+def benchmark(loader, backbone, head, Z, device, n_iters=50):
+    backbone.eval(); head.train()
+    Z = Z.to(device)
+    t0 = torch.cuda.Event(enable_timing=True)
+    t1 = torch.cuda.Event(enable_timing=True)
+    times = []
+    it = 0
+    for b in loader:
+        if it >= n_iters: break
+        torch.cuda.synchronize() if torch.cuda.is_available() else None
+        t0.record() if torch.cuda.is_available() else None
+
+        with torch.no_grad():
+            zi, zt = extract_reps(backbone, b, device)
+        logits, R = head(img_rep=zi, txt_rep=zt, Z_global=Z)
+        _ = logits  # 역전파 제외(순전파만)
+
+        t1.record() if torch.cuda.is_available() else None
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            ms = t0.elapsed_time(t1)  # 밀리초
+        else:
+            ms = 0.0  # CPU면 time.perf_counter로 감싸도 됨
+        times.append(ms/1000.0)  # 초
+        it += 1
+    return sum(times)/max(1,len(times))  # 배치당 평균 초
+
+
+def build_dataloaders(cid: int, batch_size: int):
+    from torch.utils.data import DataLoader, random_split
+    from pathlib import Path
+
+    lcfg = LocalCfg()
+
+    # CSV 경로
+    csv_dir = Path(lcfg.CLIENT_CSV_DIR)
+    csv_path = csv_dir / f"client_{cid:02d}.csv"
+    if not csv_path.exists():
+        csv_path = csv_dir / f"client_{cid}.csv"
+    if not csv_path.exists():
+        raise FileNotFoundError(f"Client CSV not found for client_{cid}: {csv_path}")
+
+    # 라벨 테이블 + 메타
+    label_csv = lcfg.LABEL_CSV_NEGBIO if lcfg.USE_LABEL == "negbio" else lcfg.LABEL_CSV_CHEXPERT
+    label_table = load_label_table(str(label_csv), lcfg.LABEL_COLUMNS)
+    meta_picker = build_image_picker_from_metadata(str(lcfg.METADATA_CSV), str(lcfg.IMG_ROOT))
+
+    # 모드 결정
+    mode = (
+        "multimodal" if 1 <= cid <= 16 else
+        "image_only" if cid in (17, 18) else
+        "text_only"  if cid in (19, 20) else
+        "unknown"
+    )
+
+    # 전체 Dataset 로드
+    ds_all = ClientDataset(
+        str(csv_path),
+        label_table,
+        mode,
+        meta_picker,
+        lcfg.TEXT_MODEL_NAME,
+        lcfg.MAX_LEN,
+        img_transform()
+    )
+
+    # 9:1 random split (seed 고정)
+    n = len(ds_all)
+    n_tr = int(n * 0.9)
+    n_val = n - n_tr
+    tr_set, val_set = random_split(
+        ds_all, [n_tr, n_val],
+        generator=torch.Generator().manual_seed(42)
+    )
+
+    train_loader = DataLoader(tr_set, batch_size=batch_size, shuffle=True,  num_workers=lcfg.NUM_WORKERS)
+    val_loader   = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=lcfg.NUM_WORKERS)
+    return train_loader, val_loader
 
 # ---------------------------
 # 페이로드(Z) 로더 (JSON → .npy)
 # ---------------------------
 def load_payload_for_client(cid: int):
     """
-    global_outputs/client_{cid}/global_payload.json을 읽어
-    Z 경로를 찾고 .npy를 로드해 1D torch.Tensor로 반환.
-    우선순위: Z_proxy_text_path → Z_proxy_image_path → Z_path
+    global_output/client_{cid:02d or cid}/global_payload.(json|pt) 를 읽어
+    Z (np.ndarray or torch.Tensor)를 1D torch.Tensor 로 반환.
+    우선순위: Z_proxy_text → Z_proxy_image → Z
     """
-    p_json = os.path.join(cfg.OUT_GLOBAL_DIR, f"client_{cid}", "global_payload.json")
-    if not os.path.exists(p_json):
-        raise FileNotFoundError(f"payload json not found: {p_json}")
+    base = cfg.OUT_GLOBAL_DIR
+    d_pad = os.path.join(base, f"client_{cid:02d}")
+    d_raw = os.path.join(base, f"client_{cid}")
+    cdir = d_pad if os.path.isdir(d_pad) else (d_raw if os.path.isdir(d_raw) else None)
+    if cdir is None:
+        raise FileNotFoundError(f"client dir not found: {d_pad} or {d_raw}")
 
-    payload = json.loads(open(p_json, "r", encoding="utf-8").read())
+    # 파일 후보들(.json 우선, 없으면 .pt)
+    pj = os.path.join(cdir, "global_payload.json")
+    pp = os.path.join(cdir, "global_payload.pt")
 
-    z_path = (payload.get("Z_proxy_text_path")
-              or payload.get("Z_proxy_image_path")
-              or payload.get("Z_path"))
-    if not z_path or not os.path.exists(z_path):
-        raise FileNotFoundError(f"Z path not found in payload or file does not exist: {z_path}")
+    payload = None
+    if os.path.exists(pj):
+        import json
+        with open(pj, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        # JSON은 보통 경로를 들고 있음 → 경로로부터 Z 로드
+        z_path = (payload.get("Z_proxy_text_path")
+                  or payload.get("Z_proxy_image_path")
+                  or payload.get("Z_path"))
+        if not z_path or not os.path.exists(z_path):
+            raise FileNotFoundError(f"Z path missing or not found in JSON: {z_path}")
+        Z = np.load(z_path)
+    elif os.path.exists(pp):
+        # ✅ payload는 혼합형(dict)이므로 weights_only 쓰지 말 것
+        obj = torch.load(pp, map_location="cpu")
 
-    Z = np.load(z_path)
-    if Z.ndim == 2:   # (K, d)면 평균으로 집계 (원하면 median/max로 바꿔도 됨)
+        if not isinstance(obj, dict):
+            raise TypeError(f"payload .pt must be a dict, got {type(obj)}")
+
+        # 우선순위대로 키 선택
+        Z = obj.get("Z_proxy_text") or obj.get("Z_proxy_image") or obj.get("Z")
+        if Z is None:
+            raise KeyError(f"'Z' not found in payload: keys={list(obj.keys())}")
+
+        payload = obj
+
+        # numpy면 그대로, torch면 numpy로
+        if isinstance(Z, torch.Tensor):
+            Z = Z.detach().cpu().numpy()
+    else:
+        raise FileNotFoundError(f"payload file not found: {pj} or {pp}")
+
+    # Z shape 정리: (K,d) → 평균, (d,) 그대로
+    if Z.ndim == 2:
         Z = Z.mean(axis=0)
     if Z.ndim != 1:
         raise ValueError(f"unexpected Z shape: {Z.shape} (expect [d] or [K,d])")
 
     Z = torch.tensor(Z, dtype=torch.float32)  # [d_model]
+
+    # 하이퍼 파싱(없으면 cfg 기본값)
     T = float(payload.get("kd_temperature", cfg.KD_TEMP))
     W = float(payload.get("kd_rep_weight", cfg.KD_REP_WEIGHT))
     role = payload.get("role", "unknown")
@@ -53,19 +169,55 @@ def load_payload_for_client(cid: int):
     return Z, T, W, role, payload
 
 
+
 # ---------------------------
 # 백본 인코더(고정)
 # ---------------------------
 def build_backbone(device: torch.device):
-    """
-    utils_fusion.FusionClassifier의 인코더(img_enc/txt_enc)만 사용.
-    필요하면 여기서 client별 체크포인트를 불러오도록 확장 가능.
-    """
-    model = tl.MultiModalLateFusion(num_classes=cfg.NUM_CLASSES).to(device)
+    import torch
+    from torch.nn.parameter import UninitializedParameter
+
+    model = LocalFusion(num_classes=cfg.NUM_CLASSES).to(device)
     model.eval()
+
+    # 1) Lazy 모듈 materialize: 멀티모달 더미 입력으로 1회 forward
+    #    (LocalFusion의 forward 시그니처가 (img, input_ids, attn_mask)라고 가정)
+    try:
+        with torch.no_grad():
+            x_img = torch.zeros(1, 3, 224, 224, device=device)     # 이미지 더미
+            txt_len = 64
+            input_ids = torch.ones(1, txt_len, dtype=torch.long, device=device)
+            attn_mask = torch.ones(1, txt_len, dtype=torch.long, device=device)
+            _ = model(x_img, input_ids, attn_mask)
+    except Exception as e:
+        # 텍스트/이미지 중 하나만 받는 구조면 필요한 모달만 넣어 재시도
+        tried = False
+        try:
+            with torch.no_grad():
+                x_img = torch.zeros(1, 3, 224, 224, device=device)
+                _ = model(x_img, None, None)
+                tried = True
+        except Exception:
+            pass
+        if not tried:
+            try:
+                with torch.no_grad():
+                    txt_len = 64
+                    input_ids = torch.ones(1, txt_len, dtype=torch.long, device=device)
+                    attn_mask = torch.ones(1, txt_len, dtype=torch.long, device=device)
+                    _ = model(None, input_ids, attn_mask)
+            except Exception as e2:
+                print(f"[build_backbone] Lazy 초기화 더미 패스 실패: {e!r} / fallback: {e2!r}")
+
+    # 2) 이제 materialize된 뒤 freeze
     for p in model.parameters():
+        if isinstance(p, UninitializedParameter):
+            # 혹시 남아있다면 안전하게 스킵
+            continue
         p.requires_grad_(False)
+
     return model
+
 
 
 @torch.no_grad()
@@ -168,7 +320,6 @@ def main():
     args = ap.parse_args()
 
     device = torch.device(args.device)
-    
 
     # 0) 전역 Z 로드 + KD 하이퍼
     Z, T, W, role, payload = load_payload_for_client(args.cid)
@@ -197,7 +348,8 @@ def main():
 
     best_metric = None
     best_path = os.path.join(cfg.BASE_DIR, f"client_{args.cid}", f"client_{args.cid}_local_gated_best.pt")
-
+    
+    
     for ep in range(1, args.epochs + 1):
         tr = train_one_epoch(backbone, head, train_loader, Z, device, bce, optimizer, kd_weight=W)
         m  = evaluate(backbone, head, val_loader, Z, device)

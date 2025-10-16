@@ -1,0 +1,1 @@
+python -m global_train.repr_kd --alpha 0.5 --kteach 32 --verbose

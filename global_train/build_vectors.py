@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-build_vectors.py (robust, projector-based)
+build_vectors.py (robust, projector-based) — MIMIC-CXR 파이프라인 호환
 - 각 클라이언트 임베딩을 모아 KMeans로 이미지/텍스트 센트로이드를 만든 뒤,
   코사인 유사도 기반 헝가리안 매칭 → 공통 차원 투영 → 최종 d_model로 투영하여
   글로벌 벡터 Z를 생성합니다.
-- CrossAttention 의존성을 제거하고, 차원 불일치/샘플 부족 상황을 모두 방어합니다.
+- 반환값을 torch.Tensor(1D, 길이 cfg.D_MODEL)로 통일하여 orchestrator와 호환.
 """
 
 from __future__ import annotations
@@ -12,11 +12,12 @@ import numpy as np
 from typing import Dict, List, Tuple, Optional
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
+import torch
 
 from .config import cfg
 from .utils_io import get_client_reps
 
-# --------------- cosine / hungarian helpers ---------------
+# ---------------- cosine / hungarian helpers ----------------
 
 def _l2_normalize(X: np.ndarray) -> np.ndarray:
     if X is None or X.size == 0:
@@ -51,7 +52,6 @@ def hungarian_match_centroids(img_cent: np.ndarray, txt_cent: np.ndarray) -> Tup
     try:
         from scipy.optimize import linear_sum_assignment
         r_idx, c_idx = linear_sum_assignment(cost)
-        # 행 기준 정렬 보장
         order = np.argsort(r_idx)
         r_idx = r_idx[order]; c_idx = c_idx[order]
     except Exception:
@@ -74,13 +74,11 @@ def hungarian_match_centroids(img_cent: np.ndarray, txt_cent: np.ndarray) -> Tup
     sim = (1.0 - cost[r_idx, c_idx]).astype(np.float32)
     return img_ordered, txt_ordered, sim
 
-# --------------- grouping helpers (기존 인터페이스 유지) ---------------
+# ---------------- grouping helpers (기존 인터페이스 유지) ----------------
 
 def split_groups_by_quantile(metrics: dict) -> Tuple[list, list, list]:
     """
     멀티모달 클라를 metric 3분위수로 분할 (top/mid/low).
-    cfg.METRIC_NAME이 loss면 낮을수록 좋다는 점은 orchestrator에서 처리.
-    여기서는 단순 분위수만 계산.
     """
     vals = np.array([v for k, v in metrics.items() if k in cfg.FUSION_CLIENTS and not np.isnan(v)])
     if vals.size == 0:
@@ -113,12 +111,11 @@ def kmeans_centroids(X: np.ndarray, k: int) -> np.ndarray:
     C  = km.cluster_centers_.astype(np.float32)
     return _l2_normalize(C)
 
-# --------------- dimensionality helpers ---------------
+# ---------------- dimensionality helpers ----------------
 
 def _project_to_dim(X: np.ndarray, d: int) -> np.ndarray:
     """
     X([N,D]) → 목표 차원 d 로 투영 (PCA→pad/trim).
-    n_components ≤ min(N,D,d) 준수. 입력이 너무 작으면 그대로 두고 pad.
     """
     if X is None or X.size == 0:
         return np.zeros((0, d), dtype=np.float32)
@@ -142,52 +139,51 @@ def _project_to_dim(X: np.ndarray, d: int) -> np.ndarray:
         Y = Y[:, :d]
     return Y
 
-# --------------- Z builder ---------------
+# ---------------- Z builder ----------------
 
-def build_global_vectors(img_cent: np.ndarray, txt_cent: np.ndarray) -> Dict[str, np.ndarray]:
+def _zeros_Z_vec() -> Dict[str, torch.Tensor]:
+    d = int(cfg.D_MODEL)
+    z = torch.zeros(d, dtype=torch.float32)
+    return {"Z_mm": z, "Z_img2txt": z.clone(), "Z_txt2img": z.clone()}
+
+def build_global_vectors(img_cent: np.ndarray, txt_cent: np.ndarray) -> Dict[str, torch.Tensor]:
     """
     1) 매칭용 공통 차원으로 투영 (d_pair = min(D_img, D_txt))
     2) 코사인 기반 헝가리안 매칭으로 K개의 페어 추출
-    3) 원본 센트로이드에서 페어를 뽑아 d_model로 투영 (PCA→pad/trim)
-    4) Z_mm = (img_proj + txt_proj)/2, Z_img2txt = txt_proj, Z_txt2img = img_proj
-    반환은 모두 np.ndarray(shape=[K, cfg.D_MODEL], float32)
+    3) 페어(클러스터)별 임베딩을 d_model로 투영
+    4) Z_mm = (img_proj + txt_proj)/2 의 **평균(클러스터 평균)**을 최종 1D 벡터로 반환
+       Z_img2txt = txt_proj의 평균, Z_txt2img = img_proj의 평균
+    반환: {"Z_mm": torch.FloatTensor([d_model]),
+           "Z_img2txt": torch.FloatTensor([d_model]),
+           "Z_txt2img": torch.FloatTensor([d_model])}
     """
     if img_cent is None or img_cent.size == 0 or txt_cent is None or txt_cent.size == 0:
-        d = int(cfg.D_MODEL)
-        return {"Z_mm": np.zeros((0, d), np.float32),
-                "Z_img2txt": np.zeros((0, d), np.float32),
-                "Z_txt2img": np.zeros((0, d), np.float32)}
+        return _zeros_Z_vec()
 
-    Di = img_cent.shape[1]
-    Dt = txt_cent.shape[1]
+    Di, Dt = img_cent.shape[1], txt_cent.shape[1]
     d_pair = max(1, min(Di, Dt))
 
-    # 매칭 전 공통 차원으로 투영(매칭 품질을 위해 L2 정규화가 들어간 cosine만 사용)
+    # 매칭 전 공통 차원으로 투영
     img_for_match = _project_to_dim(img_cent, d_pair)
     txt_for_match = _project_to_dim(txt_cent, d_pair)
 
     img_m, txt_m, _sim = hungarian_match_centroids(img_for_match, txt_for_match)
     K = img_m.shape[0]
     if K == 0:
-        d = int(cfg.D_MODEL)
-        return {"Z_mm": np.zeros((0, d), np.float32),
-                "Z_img2txt": np.zeros((0, d), np.float32),
-                "Z_txt2img": np.zeros((0, d), np.float32)}
+        return _zeros_Z_vec()
 
-    # 페어링된 인덱스에 맞춰 원본 센트로이드에서 재선택
-    # (img_m/txt_m은 매칭용 투영 결과라 원본과 1:1 인덱스를 공유하지 않을 수 있으므로
-    #  여기서는 그냥 img_m/txt_m를 그대로 사용해도 무방합니다. 필요시 원본에서 별도 추적해 뽑도록 변경하세요.)
-    # 최종 Z는 d_model로 맞춘 뒤 생성
+    # 최종 Z는 d_model로 투영 후 클러스터 평균을 1D 벡터로 사용
     d_model = int(cfg.D_MODEL)
     img_proj = _project_to_dim(img_m, d_model)   # [K, d_model]
     txt_proj = _project_to_dim(txt_m, d_model)   # [K, d_model]
 
-    Z_mm      = 0.5 * (img_proj + txt_proj)
-    Z_img2txt = txt_proj.copy()
-    Z_txt2img = img_proj.copy()
+    Z_mm      = 0.5 * (img_proj + txt_proj)      # [K, d_model]
+    Z_img2txt = txt_proj
+    Z_txt2img = img_proj
 
-    return {
-        "Z_mm":      Z_mm.astype(np.float32),
-        "Z_img2txt": Z_img2txt.astype(np.float32),
-        "Z_txt2img": Z_txt2img.astype(np.float32),
-    }
+    # 클러스터 평균 → 1D
+    z_mm      = torch.from_numpy(Z_mm.mean(axis=0).astype(np.float32))
+    z_img2txt = torch.from_numpy(Z_img2txt.mean(axis=0).astype(np.float32))
+    z_txt2img = torch.from_numpy(Z_txt2img.mean(axis=0).astype(np.float32))
+
+    return {"Z_mm": z_mm, "Z_img2txt": z_img2txt, "Z_txt2img": z_txt2img}

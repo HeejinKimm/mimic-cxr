@@ -45,5 +45,6 @@ datasets/**
 .DS_Store
 Thumbs.db
 
-# Local Model Weight
-best.pt
+# # Local Model Weight
+# best.pt
+# global_payload.pt
