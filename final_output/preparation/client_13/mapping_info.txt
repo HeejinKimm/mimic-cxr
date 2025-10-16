@@ -1,0 +1,5 @@
+client_id=13
+img_cluster=1
+mapped_txt_cluster=1
+Z_file=Z_img1_txt1.npy
+mode=img_to_txt

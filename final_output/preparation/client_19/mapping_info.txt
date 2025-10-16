@@ -1,0 +1,5 @@
+client_id=19
+img_cluster=2
+txt_cluster=2
+Z_file=Z_img2_txt2.npy
+mode=txt_only_fixed_txt
