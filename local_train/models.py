@@ -45,12 +45,18 @@ class MultiModalLateFusion(nn.Module):
         self.txt_out = txt_out
         self.img_enc = ImageHead(trainable=image_trainable, out_dim=img_out)
         self.txt_enc = TextHead(model_name=text_model_name, out_dim=txt_out, trainable=text_trainable)
+        # self.fuse = nn.Sequential(
+        #     nn.LazyLinear(hidden),   # in_features 자동 추론
+        #     nn.ReLU(inplace=True),
+        #     nn.Dropout(dropout),
+        #     nn.Linear(hidden, num_classes)
+        # )   
         self.fuse = nn.Sequential(
-            nn.LazyLinear(hidden),   # in_features 자동 추론
+            nn.Linear(img_out + txt_out, hidden),  # 512 -> hidden
             nn.ReLU(inplace=True),
             nn.Dropout(dropout),
             nn.Linear(hidden, num_classes)
-        )   
+        )
 
     def _to_bd(self, z: torch.Tensor) -> torch.Tensor:
         if z.dim() == 3:
