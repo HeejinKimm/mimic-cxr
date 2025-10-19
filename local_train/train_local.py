@@ -5,9 +5,9 @@ from torch import nn
 from torch.utils.data import DataLoader, random_split
 from typing import Optional, List
 
-from config import Cfg
-from data import ClientDataset, build_image_picker_from_metadata, load_label_table, img_transform
-from models import MultiModalLateFusion
+from .config import Cfg
+from .data import ClientDataset, build_image_picker_from_metadata, load_label_table, img_transform
+from .models import MultiModalLateFusion
 
 class Trainer:
     def __init__(self, model, device, lr):
