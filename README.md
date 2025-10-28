@@ -27,5 +27,3 @@
    ~3)  orchestrator: 글로벌 Z 계산 및 저장~
    3)  cluster_and_group_z.py : Clustering 진행 후 그룹별 Z 산출 -> global_output\clustering 디렉토리 아래 N개의 glabal Z 생성
    4)  map_img_txt_clusters.py : 클러스터링 단계에서 저장한 그룹별 서브센트로이드(.npy)를 읽어서 "이미지 클러스터 → 텍스트 클러스터" 매핑을 cross-attention 기반 코사인 유사도로 계산
-3. local_gating/
-   1) train_local_kd.py : local gating 알고리즘으로 z 업데이트 => 해당 output : global_output/client_XX/global_payload.pt
